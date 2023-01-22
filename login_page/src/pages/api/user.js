@@ -2,10 +2,12 @@ const MongoClient = require('mongodb').MongoClient;
 const assert = require('assert');
 const bcrypt = require('bcrypt');
 const v4 = require('uuid').v4;
+const jwt = require('jsonwebtoken');
+const jwtSecret = 'SUPERSECRETE20220';
 
 const saltRounds = 10;
 const url = 'mongodb://localhost:27017';
-const dbName = 'postin';
+const dbName = 'simple-login-db';
 
 const client = new MongoClient(url, {
   useNewUrlParser: true,
@@ -42,7 +44,7 @@ export default (req, res) => {
       assert.notEqual(null, req.body.email, 'Email required');
       assert.notEqual(null, req.body.password, 'Password required');
     } catch (bodyError) {
-      res.status(403).send(bodyError.message);
+      res.status(403).json({error: true, message: bodyError.message});
     }
 
     // verify email does not exist already
@@ -55,18 +57,29 @@ export default (req, res) => {
 
       findUser(db, email, function(err, user) {
         if (err) {
-          res.status(500).end('Error finding User');
+          res.status(500).json({error: true, message: 'Error finding User'});
+          return;
         }
         if (!user) {
           // proceed to Create
           createUser(db, email, password, function(creationResult) {
             if (creationResult.ops.length === 1) {
-              res.status(201).json(creationResult.ops[0]);
+              const user = creationResult.ops[0];
+              const token = jwt.sign(
+                {userId: user.userId, email: user.email},
+                jwtSecret,
+                {
+                  expiresIn: 3000, //50 minutes
+                },
+              );
+              res.status(200).json({token});
+              return;
             }
           });
         } else {
           // User exists
-          res.status(403).send('Email exists');
+          res.status(403).json({error: true, message: 'Email exists'});
+          return;
         }
       });
     });
